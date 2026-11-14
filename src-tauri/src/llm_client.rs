@@ -550,6 +550,103 @@ pub async fn send_chat_completion_with_schema(
     Ok(choice.message.content)
 }
 
+/// Sonar cloud transcription: send a WAV recording (base64) with an
+/// instruction to an OpenAI-compatible `/chat/completions` endpoint that
+/// accepts `input_audio` content (Gemini's OpenAI layer, OpenRouter).
+/// Returns the model's text. A 400/422 to a request carrying the
+/// reasoning-disable fields is retried once without them.
+pub async fn send_audio_transcription(
+    provider: &PostProcessProvider,
+    api_key: String,
+    model: &str,
+    instruction: String,
+    wav_base64: String,
+    disable_reasoning: bool,
+) -> Result<Option<String>, String> {
+    let base_url = provider.base_url.trim_end_matches('/');
+    let url = format!("{}/chat/completions", base_url);
+    debug!(
+        "Sending audio transcription request to: {}",
+        sanitized_url_for_log(&url)
+    );
+    let client = create_client(provider, &api_key)?;
+
+    let key = endpoint_key(provider, model);
+    let reasoning = if disable_reasoning && !is_known_rejected(&key) {
+        reasoning_disable_params(provider)
+    } else {
+        ReasoningParams::default()
+    };
+    let build = |reasoning: &ReasoningParams| {
+        let mut body = serde_json::json!({
+            "model": model,
+            "stream": false,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": instruction },
+                    { "type": "input_audio", "input_audio": { "data": wav_base64, "format": "wav" } }
+                ]
+            }]
+        });
+        if let (Value::Object(map), Ok(Value::Object(extra))) =
+            (&mut body, serde_json::to_value(reasoning))
+        {
+            map.extend(extra);
+        }
+        body
+    };
+
+    let mut response = client
+        .post(&url)
+        .json(&build(&reasoning))
+        .send()
+        .await
+        .map_err(|e| report_reqwest_error("Audio transcription request failed", &e))?;
+    let mut status = response.status();
+
+    if !status.is_success() && matches!(status.as_u16(), 400 | 422) && !reasoning.is_empty() {
+        let error_text = response.text().await.unwrap_or_default();
+        info!(
+            "Endpoint rejected audio request with reasoning field (status {}): {}. Retrying without it",
+            status, error_text
+        );
+        response = client
+            .post(&url)
+            .json(&build(&ReasoningParams::default()))
+            .send()
+            .await
+            .map_err(|e| report_reqwest_error("Audio transcription retry failed", &e))?;
+        status = response.status();
+        if status.is_success() {
+            remember_rejection(key);
+        }
+    }
+
+    if !status.is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|e| report_reqwest_error("Failed to read API error response", &e));
+        return Err(format!(
+            "Cloud transcription failed with status {}: {}",
+            status, error_text
+        ));
+    }
+
+    let completion: ChatCompletionResponse = response
+        .json()
+        .await
+        .map_err(|e| report_reqwest_error("Failed to parse cloud transcription", &e))?;
+    let Some(choice) = completion.choices.into_iter().next() else {
+        return Ok(None);
+    };
+    if choice.finish_reason.as_deref() == Some("length") {
+        return Err("Cloud transcription was cut off at the provider's output limit".to_string());
+    }
+    Ok(choice.message.content)
+}
+
 /// Send a single-prompt request to an Anthropic Messages API (`/messages`).
 /// Used by every provider with the Anthropic format (the built-in Anthropic
 /// provider and a custom provider set to it). None of them use structured

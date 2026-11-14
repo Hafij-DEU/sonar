@@ -1335,9 +1335,15 @@ fn run_setup(info: &LoadedInfo, settings: &AppSettings, language: LanguageDecisi
         languages
     );
 
+    // Sonar: the Bangla Whisper model always runs as Bangla.
+    let intent = if crate::sonar::is_bangla_model(&settings.selected_model) {
+        "bn"
+    } else {
+        language.intent()
+    };
     let run_plan = transcribe_cpp_run_plan(
         settings.translate_to_english,
-        language.intent(),
+        intent,
         &languages,
         model_supports_translate,
     );

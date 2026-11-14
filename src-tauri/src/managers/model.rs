@@ -1057,6 +1057,38 @@ impl ModelManager {
             },
         );
 
+        // Sonar: Whisper Medium fine-tuned for Bangla (public GGUF from the
+        // shobdo-releases models-v1 release). Always transcribes as Bangla.
+        available_models.insert(
+            crate::sonar::BANGLA_MODEL_ID.to_string(),
+            ModelInfo {
+                id: crate::sonar::BANGLA_MODEL_ID.to_string(),
+                name: "Bangla Whisper Medium".to_string(),
+                description: "Bangla speech recognition that runs on this computer.".to_string(),
+                filename: "bangla-whisper-medium-Q8_0.gguf".to_string(),
+                source: ModelSource::Url {
+                    url: "https://github.com/khalidfarhanfarlu/shobdo-releases/releases/download/models-v1/bangla-whisper-medium-Q8_0.gguf".to_string(),
+                    sha256: Some(
+                        "6680283d5d1cfe89905ad1b9dd8b19087901049899f8d92caa8455bbc3f94f9e"
+                            .to_string(),
+                    ),
+                },
+                size_mb: 793,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                accuracy_score: 0.80,
+                speed_score: 0.45,
+                supports_translation: false,
+                is_recommended: true,
+                supported_languages: vec!["bn".to_string()],
+                supports_language_selection: false,
+                is_custom: false,
+                supports_streaming: false,
+                supports_language_detection: false,
+            },
+        );
+
         // Seed the bundled offline catalog before the on-disk scans, so a model
         // already in the HF cache dedups onto its richer catalog entry (the scans
         // only insert ids not already present) instead of showing as a bare cache

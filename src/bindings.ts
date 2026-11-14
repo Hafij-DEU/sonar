@@ -383,6 +383,30 @@ async changeAppendTrailingSpaceSetting(enabled: boolean) : Promise<Result<null, 
     else return { status: "error", error: e  as any };
 }
 },
+async changeCloudTranscriptionEnabledSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_cloud_transcription_enabled_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeCloudTranscriptionProviderSetting(providerId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_cloud_transcription_provider_setting", { providerId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async changeCloudTranscriptionQualitySetting(quality: CloudTranscriptionQuality) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_cloud_transcription_quality_setting", { quality }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeLazyStreamCloseSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_lazy_stream_close_setting", { enabled }) };
@@ -1103,7 +1127,9 @@ transcriptionJob: "transcription-job"
  * object, so a partial store can never fail the whole load (#1619).
  * Field-level defaults below take precedence where present.
  */
+export type CloudTranscriptionQuality = "fast" | "accurate"
 export type AppSettings = { 
+cloud_transcription_enabled?: boolean; english_model?: string; cloud_transcription_provider_id?: string; cloud_transcription_quality?: CloudTranscriptionQuality; 
 /**
  * Internal settings schema marker for one-time migrations. Fresh installs
  * start at the current version; existing stores missing this key are

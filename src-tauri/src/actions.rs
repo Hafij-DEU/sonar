@@ -134,6 +134,8 @@ pub trait ShortcutAction: Send + Sync {
 // Transcribe Action
 struct TranscribeAction {
     post_process: bool,
+    /// Sonar: the language this shortcut dictates.
+    language: crate::sonar::DictationLanguage,
 }
 
 /// Field name for structured output JSON schema
@@ -522,11 +524,18 @@ impl ShortcutAction for TranscribeAction {
         let tm = app.state::<Arc<TranscriptionManager>>();
         let rm = app.state::<Arc<AudioRecordingManager>>();
 
+        // Sonar: cloud mode needs no local model; offline mode points the
+        // engine at this shortcut's language model before it loads.
+        let cloud = get_settings(app).cloud_transcription_enabled;
+        if !cloud {
+            crate::sonar::prepare_offline_model(app, self.language);
+        }
+
         // Load ASR model and VAD model in parallel
         let kickoff_started = Instant::now();
         // An empty selection has nothing to load; the check below says so.
         let selected_model = get_settings(app).selected_model;
-        let load_started = !selected_model.is_empty() && tm.initiate_model_load(true);
+        let load_started = !cloud && !selected_model.is_empty() && tm.initiate_model_load(true);
         let rm_clone = Arc::clone(&rm);
         std::thread::spawn(move || {
             if let Err(e) = rm_clone.preload_vad() {
@@ -537,7 +546,16 @@ impl ShortcutAction for TranscribeAction {
 
         // Don't open the mic if nothing can transcribe the recording. A load
         // started above reports its own failure; one already running doesn't.
-        if !tm.is_model_loaded() {
+        if cloud && crate::sonar::cloud_key_missing(&get_settings(app)) {
+            warn!("Not starting recording: cloud mode has no API key");
+            notices::raise(
+                app,
+                Notice::new(NoticeCode::TranscriptionFailed, NoticeSource::Dictation)
+                    .with_detail("Add your Gemini API key in Sonar's settings.".to_string()),
+            );
+            return;
+        }
+        if !cloud && !tm.is_model_loaded() {
             if selected_model.is_empty() {
                 warn!("Not starting recording: no model is selected");
                 tm.raise_no_model_selected();
@@ -573,10 +591,11 @@ impl ShortcutAction for TranscribeAction {
         // Use the app-facing model capability as the single pre-recording source
         // for live streaming decisions. Unknown support is represented as false
         // until the model registry is updated by discovery or runtime load.
-        let model_supports_streaming = selected_model_info
-            .as_ref()
-            .map(|m| m.supports_streaming)
-            .unwrap_or(false);
+        let model_supports_streaming = !cloud
+            && selected_model_info
+                .as_ref()
+                .map(|m| m.supports_streaming)
+                .unwrap_or(false);
         let vad_policy = if !settings.vad_enabled {
             VadPolicy::Disabled
         } else if model_supports_streaming {
@@ -591,7 +610,7 @@ impl ShortcutAction for TranscribeAction {
             streaming: model_supports_streaming,
             long_form: false,
         };
-        if live_decode(expected_model, settings.long_form_chunking) != LiveDecode::None {
+        if !cloud && live_decode(expected_model, settings.long_form_chunking) != LiveDecode::None {
             tm.start_stream();
         }
         let plan_elapsed = plan_started.elapsed();
@@ -737,6 +756,9 @@ impl ShortcutAction for TranscribeAction {
 
         let binding_id = binding_id.to_string(); // Clone binding_id for the async task
         let post_process = self.post_process;
+        let language = self.language;
+        let cloud_settings = get_settings(app);
+        let cloud = cloud_settings.cloud_transcription_enabled;
         let cancel_generation = rm.cancel_generation();
 
         tauri::async_runtime::spawn(async move {
@@ -787,7 +809,11 @@ impl ShortcutAction for TranscribeAction {
                     // otherwise a batch run of the samples. A cancel is surfaced
                     // as an error, so it never starts a batch run.
                     let transcription_time = Instant::now();
-                    let transcription_result = tm.transcribe_recording(samples);
+                    let transcription_result = if cloud {
+                        crate::sonar::transcribe_cloud(&cloud_settings, &samples, language).await
+                    } else {
+                        tm.transcribe_recording(samples)
+                    };
 
                     // Await WAV save and verify
                     let wav_saved = match wav_handle.await {
@@ -1086,11 +1112,22 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
         "transcribe".to_string(),
         Arc::new(TranscribeAction {
             post_process: false,
+            language: crate::sonar::DictationLanguage::Bangla,
+        }) as Arc<dyn ShortcutAction>,
+    );
+    map.insert(
+        "transcribe_english".to_string(),
+        Arc::new(TranscribeAction {
+            post_process: false,
+            language: crate::sonar::DictationLanguage::English,
         }) as Arc<dyn ShortcutAction>,
     );
     map.insert(
         "transcribe_with_post_process".to_string(),
-        Arc::new(TranscribeAction { post_process: true }) as Arc<dyn ShortcutAction>,
+        Arc::new(TranscribeAction {
+            post_process: true,
+            language: crate::sonar::DictationLanguage::Bangla,
+        }) as Arc<dyn ShortcutAction>,
     );
     map.insert(
         "cancel".to_string(),

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { listen } from "@tauri-apps/api/event";
 import type {
+  CloudTranscriptionQuality,
   AppSettings as Settings,
   AudioDevice,
   PostProcessApiFormat,
@@ -168,6 +169,14 @@ const settingUpdaters: {
     commands.setPostProcessSelectedPrompt(value as string),
   mute_while_recording: (value) =>
     commands.changeMuteWhileRecordingSetting(value as boolean),
+  cloud_transcription_enabled: (value) =>
+    commands.changeCloudTranscriptionEnabledSetting(value as boolean),
+  cloud_transcription_provider_id: (value) =>
+    commands.changeCloudTranscriptionProviderSetting(value as string),
+  cloud_transcription_quality: (value) =>
+    commands.changeCloudTranscriptionQualitySetting(
+      value as CloudTranscriptionQuality,
+    ),
   append_trailing_space: (value) =>
     commands.changeAppendTrailingSpaceSetting(value as boolean),
   log_level: (value) => commands.setLogLevel(value as any),

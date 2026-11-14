@@ -13,6 +13,9 @@ import {
   checkMicrophonePermission,
 } from "tauri-plugin-macos-permissions-api";
 import "./App.css";
+import "./sonar/sonar.css";
+import { SonarShell } from "./sonar/SonarShell";
+import { SetupView } from "./sonar/SetupView";
 import SecureInputWarning from "./components/SecureInputWarning";
 import Footer from "./components/footer";
 import { OnboardingFlow } from "./components/onboarding/OnboardingFlow";
@@ -293,7 +296,7 @@ function App() {
       </>
     );
   } else if (onboardingStep === "flow") {
-    content = <OnboardingFlow onComplete={() => setOnboardingStep("done")} />;
+    content = <SetupView onComplete={() => setOnboardingStep("done")} />;
   } else if (onboardingStep === "permissions") {
     content = (
       <ReturningPermissions
@@ -317,42 +320,12 @@ function App() {
     );
   } else {
     content = (
-      <div
-        dir={direction}
-        className="h-screen flex flex-col select-none cursor-default"
-      >
+      <>
         <ErrorBoundary context="What's New">
           <WhatsNewGate />
         </ErrorBoundary>
-        {/* Main content area that takes remaining space */}
-        <div className="flex-1 flex overflow-hidden">
-          <Sidebar
-            activeSection={currentSection}
-            onSectionChange={setCurrentSection}
-          />
-          {/* Scrollable content area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div ref={settingsScrollRef} className="flex-1 overflow-y-auto">
-              {/* Models fills the window: its table scrolls, not the page. */}
-              <div
-                className={`flex flex-col items-center p-4 gap-4 ${currentSection === "models" ? "h-full" : ""}`}
-              >
-                <SecureInputWarning />
-                {renderSettingsContent(
-                  currentSection,
-                  setOnboardingPreview,
-                  runOnboarding,
-                  runModelMigration,
-                  setCurrentSection,
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-        {/* Fixed footer at bottom */}
-        <Footer onShowHistory={showHistory} />
-        <FileDropOverlay onDropped={showHistory} />
-      </div>
+        <SonarShell dir={direction} />
+      </>
     );
   }
 
