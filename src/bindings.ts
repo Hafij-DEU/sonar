@@ -507,6 +507,15 @@ async changeKeyboardImplementationSetting(implementation: string) : Promise<Resu
 async getKeyboardImplementation() : Promise<string> {
     return await TAURI_INVOKE("get_keyboard_implementation");
 },
+async getPortalShortcutsStatus() : Promise<PortalShortcutsStatus> {
+    return await TAURI_INVOKE("get_portal_shortcuts_status");
+},
+/**
+ * Ask the desktop again for the shortcuts, or open its shortcut editor.
+ */
+async setupPortalShortcuts(openEditor: boolean) : Promise<void> {
+    await TAURI_INVOKE("setup_portal_shortcuts", { openEditor });
+},
 async changeShowTrayIconSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_show_tray_icon_setting", { enabled }) };
@@ -1282,7 +1291,22 @@ export type KeyboardImplementation = "tauri" | "handy_keys" |
  * No built-in global shortcuts; trigger Handy via CLI flags or signals
  * (e.g. from a Wayland compositor keybinding).
  */
-"none"
+"none" | 
+/**
+ * XDG desktop portal GlobalShortcuts (GNOME/KDE Wayland). The desktop
+ * owns the key grab, so it works without the input group or root.
+ */
+"portal"
+export type PortalShortcutTrigger = { id: string; trigger: string }
+export type PortalShortcutsStatus = { 
+/**
+ * The portal backend is the selected implementation.
+ */
+enabled: boolean; 
+/**
+ * A session is bound and listening.
+ */
+active: boolean; error: string | null; triggers: PortalShortcutTrigger[] }
 export type LLMPrompt = { id: string; name: string; prompt: string }
 /**
  * When Handy's spoken-language detector picks the language for Auto.

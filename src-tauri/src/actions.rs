@@ -528,6 +528,15 @@ impl ShortcutAction for TranscribeAction {
         // engine at this shortcut's language model before it loads.
         let cloud = get_settings(app).cloud_transcription_enabled;
         if !cloud {
+            if let Some(message) = crate::sonar::missing_offline_model(app, self.language) {
+                warn!("Not starting recording: {message}");
+                notices::raise(
+                    app,
+                    Notice::new(NoticeCode::TranscriptionFailed, NoticeSource::Dictation)
+                        .with_detail(message),
+                );
+                return;
+            }
             crate::sonar::prepare_offline_model(app, self.language);
         }
 
@@ -939,6 +948,9 @@ impl ShortcutAction for TranscribeAction {
                                         // UI while this paste ran.
                                         let owns_ui =
                                             || RECORDING_SESSION.load(Ordering::SeqCst) == session;
+                                        if owns_ui() {
+                                            crate::overlay::release_overlay_focus(&ah_clone);
+                                        }
                                         let (outcome, notice) =
                                             match utils::paste(final_text, ah_clone.clone()) {
                                                 Ok(()) => {

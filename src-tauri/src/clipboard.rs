@@ -60,6 +60,9 @@ fn write_text_to_clipboard(app_handle: &AppHandle, text: &str) -> Result<(), Str
         .map_err(|e| format!("Failed to write to clipboard: {}", e))
 }
 
+/// Shortest wait before restoring the clipboard on Wayland.
+const WAYLAND_RESTORE_MIN_MS: u64 = 600;
+
 fn finish_clipboard_paste(
     paste_result: Result<(), String>,
     paste_delay_after_ms: u64,
@@ -99,7 +102,7 @@ fn paste_via_clipboard(
     let paste_result = (|| -> Result<(), String> {
         // Send paste key combo
         #[cfg(target_os = "linux")]
-        let key_combo_sent = try_send_key_combo_linux(paste_method);
+        let key_combo_sent = try_send_key_combo_linux(app_handle, paste_method);
 
         #[cfg(not(target_os = "linux"))]
         let key_combo_sent = false;
@@ -120,6 +123,13 @@ fn paste_via_clipboard(
         Ok(())
     })();
 
+    // On Wayland the key events return before the target app reads the
+    // clipboard, so a short wait restores the old content before the paste.
+    let paste_delay_after_ms = if is_wayland() {
+        paste_delay_after_ms.max(WAYLAND_RESTORE_MIN_MS)
+    } else {
+        paste_delay_after_ms
+    };
     finish_clipboard_paste(paste_result, paste_delay_after_ms, || {
         // Restore original clipboard content even when key injection failed.
         // Text takes priority so this path stays identical to the previous behavior;
@@ -142,16 +152,27 @@ fn paste_via_clipboard(
 /// compositor without the virtual-keyboard protocol) hands over to the next one.
 /// Returns `false` when none of them sent it, so the caller falls back to enigo.
 #[cfg(target_os = "linux")]
-fn try_send_key_combo_linux(paste_method: &PasteMethod) -> bool {
+fn try_send_key_combo_linux(app_handle: &AppHandle, paste_method: &PasteMethod) -> bool {
     type SendKeyCombo = fn(&PasteMethod) -> Result<(), String>;
     let mut tools: Vec<(&str, SendKeyCombo)> = Vec::new();
     if is_wayland() {
-        // Wayland: prefer wtype (but not on KDE or GNOME), then dotool, then ydotool
+        // Wayland: prefer wtype (but not on KDE or GNOME), then the desktop
+        // portal, then dotool, then ydotool.
         // Note: wtype doesn't work on KDE (no zwp_virtual_keyboard_manager_v1 support)
         // or on GNOME/Mutter (same reason — Mutter deliberately does not implement
         // the virtual-keyboard-v1 protocol).
         if !is_kde_wayland() && !is_gnome_wayland() && is_wtype_available() {
-            tools.push(("wtype", send_key_combo_via_wtype));
+            info!("Using wtype for key combo");
+            match send_key_combo_via_wtype(paste_method) {
+                Ok(()) => return true,
+                Err(e) => log::warn!("wtype could not send the paste keys: {}", e),
+            }
+        }
+        // Sonar: the RemoteDesktop portal needs no root or input group.
+        info!("Using the RemoteDesktop portal for key combo");
+        match crate::portal_input::send_paste_keys(app_handle, paste_method) {
+            Ok(()) => return true,
+            Err(e) => log::warn!("The portal could not send the paste keys: {}", e),
         }
         if is_dotool_available() {
             tools.push(("dotool", send_key_combo_via_dotool));
@@ -789,11 +810,18 @@ fn paste_direct(
     text: &str,
     app_handle: &AppHandle,
     #[cfg(target_os = "linux")] typing_tool: TypingTool,
+    #[cfg(target_os = "linux")] delays: (u64, u64),
 ) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         if try_direct_typing_linux(text, typing_tool)? {
             return Ok(());
+        }
+        // Sonar: on Wayland enigo only reaches X11 windows, and Bangla has no
+        // keys to type anyway, so paste the text through the clipboard.
+        if is_wayland() {
+            info!("No typing tool on Wayland; pasting through the clipboard");
+            return paste_via_clipboard(text, app_handle, &PasteMethod::CtrlV, delays.0, delays.1);
         }
         info!("Falling back to enigo for direct text input");
     }
@@ -883,6 +911,8 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
                 &app_handle,
                 #[cfg(target_os = "linux")]
                 settings.typing_tool,
+                #[cfg(target_os = "linux")]
+                (paste_delay_ms, paste_delay_after_ms),
             )?;
         }
         PasteMethod::CtrlV | PasteMethod::CtrlShiftV | PasteMethod::ShiftInsert => {

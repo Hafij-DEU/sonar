@@ -19,12 +19,23 @@ Hold a shortcut, speak, let go — Sonar types what you said wherever your curso
 Download `Sonar_<version>_amd64.deb` from [Releases](../../releases) and install it:
 
 ```bash
-sudo apt install ./Sonar_0.11.0_amd64.deb
+sudo apt install ./Sonar_0.12.0_amd64.deb
 ```
 
 The current .deb is built on Ubuntu 26.04 and needs glibc 2.43 or newer.
 
 On first launch Sonar asks whether to work offline (download a model) or in the cloud (paste an API key). A free Gemini key is available at <https://aistudio.google.com/apikey>.
+
+### GNOME, KDE and other Wayland desktops
+
+On Wayland, apps cannot grab keys or type into other windows by themselves. Sonar asks the desktop through its standard portals instead:
+
+1. **Shortcuts** — the first time Sonar starts, the desktop shows a dialog listing Sonar's two shortcuts. Allow it. To pick other keys later, use the Change button on the Home screen, or GNOME Settings → Keyboard → Keyboard Shortcuts → Apps.
+2. **Typing** — the first time Sonar pastes, the desktop asks to allow *remote keyboard input*. Allow it once; Sonar keeps a token so it does not ask again until you revoke it.
+
+Sonar always pastes on Wayland: it puts the text on the clipboard and sends Ctrl+V (or the paste keys you chose).
+
+If a shortcut does nothing, open Sonar: the Home screen tells you when the desktop refused the shortcuts, or when the model for that language is not downloaded.
 
 Remove it with `sudo apt remove sonar`.
 

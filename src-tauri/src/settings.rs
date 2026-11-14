@@ -246,12 +246,19 @@ pub enum KeyboardImplementation {
     /// No built-in global shortcuts; trigger Handy via CLI flags or signals
     /// (e.g. from a Wayland compositor keybinding).
     None,
+    /// XDG desktop portal GlobalShortcuts (GNOME/KDE Wayland). The desktop
+    /// owns the key grab, so it works without the input group or root.
+    Portal,
 }
 
 impl Default for KeyboardImplementation {
     fn default() -> Self {
         #[cfg(target_os = "linux")]
-        return KeyboardImplementation::Tauri;
+        return if crate::utils::is_wayland() {
+            KeyboardImplementation::Portal
+        } else {
+            KeyboardImplementation::Tauri
+        };
         #[cfg(not(target_os = "linux"))]
         return KeyboardImplementation::HandyKeys;
     }
@@ -596,7 +603,7 @@ fn default_model() -> String {
     "".to_string()
 }
 
-const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 3;
+const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 4;
 
 fn default_settings_schema_version() -> u32 {
     CURRENT_SETTINGS_SCHEMA_VERSION
@@ -1005,13 +1012,51 @@ fn migrate_dictation_shortcuts_to_super(settings: &mut AppSettings) {
         else {
             continue;
         };
+        // Never move onto a shortcut another binding already uses.
+        let taken = settings
+            .bindings
+            .iter()
+            .any(|(other, b)| other != id && b.current_binding == new_default);
         if let Some(binding) = settings.bindings.get_mut(id) {
             binding.default_binding = new_default.clone();
-            if binding.current_binding == old_default {
+            if binding.current_binding == old_default && !taken {
                 binding.current_binding = new_default;
             }
         }
     }
+}
+
+/// Undo a duplicate left by the 0.11.1 migration: when two dictation
+/// shortcuts share a key, the English one goes back to its own default
+/// (or its old Ctrl default if that is the shared one).
+fn repair_duplicate_dictation_shortcuts(settings: &mut AppSettings) {
+    let Some(bangla) = settings.bindings.get("transcribe").map(|b| b.current_binding.clone())
+    else {
+        return;
+    };
+    let Some(english) = settings.bindings.get_mut("transcribe_english") else {
+        return;
+    };
+    if english.current_binding != bangla {
+        return;
+    }
+    english.current_binding = if english.default_binding != bangla {
+        english.default_binding.clone()
+    } else {
+        "ctrl+alt+shift+space".to_string()
+    };
+}
+
+/// Sonar 0.12 added portal shortcuts. On Wayland the Tauri backend only
+/// sees keys while a Sonar window has focus, so move those users over.
+fn migrate_wayland_to_portal_shortcuts(settings: &mut AppSettings) {
+    #[cfg(target_os = "linux")]
+    if crate::utils::is_wayland() && settings.keyboard_implementation == KeyboardImplementation::Tauri
+    {
+        settings.keyboard_implementation = KeyboardImplementation::Portal;
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = settings;
 }
 
 pub fn get_default_settings() -> AppSettings {
@@ -1391,6 +1436,12 @@ fn apply_settings_migrations(
     }
     if stored_schema_version < 3 {
         migrate_dictation_shortcuts_to_super(settings);
+        settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
+        updated = true;
+    }
+    if stored_schema_version < 4 {
+        repair_duplicate_dictation_shortcuts(settings);
+        migrate_wayland_to_portal_shortcuts(settings);
         settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
         updated = true;
     }
@@ -1819,6 +1870,38 @@ mod tests {
             settings.bindings["transcribe_english"].default_binding,
             "super+alt+shift+space"
         );
+    }
+
+    #[test]
+    fn super_migration_never_creates_a_duplicate() {
+        let mut settings = get_default_settings();
+        // English already sits on the new Bangla default.
+        settings.bindings.get_mut("transcribe").unwrap().current_binding =
+            "ctrl+alt+space".to_string();
+        settings.bindings.get_mut("transcribe_english").unwrap().current_binding =
+            "super+alt+space".to_string();
+        migrate_dictation_shortcuts_to_super(&mut settings);
+        if cfg!(target_os = "linux") {
+            assert_eq!(settings.bindings["transcribe"].current_binding, "ctrl+alt+space");
+        }
+        assert_ne!(
+            settings.bindings["transcribe"].current_binding,
+            settings.bindings["transcribe_english"].current_binding
+        );
+    }
+
+    #[test]
+    fn duplicate_dictation_shortcuts_are_repaired() {
+        let mut settings = get_default_settings();
+        let bangla = settings.bindings["transcribe"].current_binding.clone();
+        settings.bindings.get_mut("transcribe_english").unwrap().current_binding = bangla.clone();
+        repair_duplicate_dictation_shortcuts(&mut settings);
+        assert_eq!(settings.bindings["transcribe"].current_binding, bangla);
+        assert_eq!(
+            settings.bindings["transcribe_english"].current_binding,
+            settings.bindings["transcribe_english"].default_binding
+        );
+        assert_ne!(settings.bindings["transcribe_english"].current_binding, bangla);
     }
 
     #[test]

@@ -20,6 +20,8 @@ mod memory;
 mod notices;
 mod overlay;
 mod paste_tx;
+#[cfg(target_os = "linux")]
+mod portal_input;
 pub mod portable;
 mod secure_input;
 mod settings;
@@ -749,6 +751,8 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_whats_new_last_seen_version_setting,
             shortcut::change_keyboard_implementation_setting,
             shortcut::get_keyboard_implementation,
+            shortcut::portal::get_portal_shortcuts_status,
+            shortcut::portal::setup_portal_shortcuts,
             shortcut::change_show_tray_icon_setting,
             shortcut::change_transcribe_accelerator_setting,
             shortcut::change_transcribe_gpu_device,

@@ -1110,6 +1110,13 @@
       "change": "Change",
       "reset": "Reset",
       "pressKeys": "Press the new keys…"
+    },
+    "portal": {
+      "title": "Allow Sonar's shortcuts",
+      "body": "Your desktop decides which global shortcuts apps may use. Sonar has not been allowed yet, so its shortcuts do nothing.",
+      "allow": "Ask again",
+      "edit": "Open shortcut settings",
+      "desktopKeys": "Desktop: {{keys}}"
     }
   }
 }

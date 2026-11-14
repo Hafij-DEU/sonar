@@ -6,6 +6,7 @@ import {
   KeyField,
   ModeSwitch,
   ShortcutEditor,
+  PortalNotice,
   useCloudKey,
   useEnglishModelId,
   useModelState,
@@ -140,6 +141,8 @@ export const HomeView: React.FC<{ onOpenHistory: () => void }> = ({
           modelId={englishId}
         />
       </div>
+
+      <PortalNotice />
 
       <section className="sonar-card">
         <h2 className="sonar-h2">{t("sonar.mode.title")}</h2>

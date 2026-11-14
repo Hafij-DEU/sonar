@@ -11,6 +11,8 @@
 
 mod handler;
 pub mod handy_keys;
+// Sonar ships for Linux only; the portal module compiles everywhere.
+pub mod portal;
 pub mod tauri_impl;
 
 use log::{debug, error, info, warn};
@@ -56,6 +58,12 @@ pub fn init_shortcuts(app: &AppHandle) {
         }
         KeyboardImplementation::None => {
             info!("Built-in keyboard shortcuts disabled; use CLI flags or signals");
+        }
+        KeyboardImplementation::Portal => {
+            #[cfg(target_os = "linux")]
+            portal::init_shortcuts(app);
+            #[cfg(not(target_os = "linux"))]
+            tauri_impl::init_shortcuts(app);
         }
     }
 }
@@ -140,6 +148,7 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
         KeyboardImplementation::Tauri => tauri_impl::register_shortcut(app, binding),
         KeyboardImplementation::HandyKeys => handy_keys::register_shortcut(app, binding),
         KeyboardImplementation::None => Ok(()),
+        KeyboardImplementation::Portal => portal_register(app, binding),
     }
 }
 
@@ -150,6 +159,7 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
         KeyboardImplementation::Tauri => tauri_impl::unregister_shortcut(app, binding),
         KeyboardImplementation::HandyKeys => handy_keys::unregister_shortcut(app, binding),
         KeyboardImplementation::None => Ok(()),
+        KeyboardImplementation::Portal => portal_unregister(app, binding),
     }
 }
 
@@ -177,6 +187,17 @@ pub fn change_binding(
     }
 
     let mut settings = settings::get_settings(&app);
+
+    // Two shortcuts on one key would fight over it; refuse instead.
+    if id != "cancel" {
+        let normalized = binding.trim().to_lowercase();
+        if let Some(other) = settings.bindings.iter().find_map(|(other, b)| {
+            (other != &id && other != "cancel" && b.current_binding.to_lowercase() == normalized)
+                .then(|| b.name.clone())
+        }) {
+            return Err(format!("That shortcut is already used by \"{}\".", other));
+        }
+    }
 
     // Get the binding to modify, or create it from defaults if it doesn't exist
     let binding_to_modify = match settings.bindings.get(&id) {
@@ -431,6 +452,7 @@ pub fn get_keyboard_implementation(app: AppHandle) -> String {
         KeyboardImplementation::Tauri => "tauri".to_string(),
         KeyboardImplementation::HandyKeys => "handy_keys".to_string(),
         KeyboardImplementation::None => "none".to_string(),
+        KeyboardImplementation::Portal => "portal".to_string(),
     }
 }
 
@@ -447,7 +469,25 @@ fn validate_shortcut_for_implementation(
         KeyboardImplementation::Tauri => tauri_impl::validate_shortcut(raw),
         KeyboardImplementation::HandyKeys => handy_keys::validate_shortcut(raw),
         KeyboardImplementation::None => Ok(()),
+        #[cfg(target_os = "linux")]
+        KeyboardImplementation::Portal => portal::validate_shortcut(raw),
+        #[cfg(not(target_os = "linux"))]
+        KeyboardImplementation::Portal => tauri_impl::validate_shortcut(raw),
     }
+}
+
+fn portal_register(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    return portal::register_shortcut(app, binding);
+    #[cfg(not(target_os = "linux"))]
+    return tauri_impl::register_shortcut(app, binding);
+}
+
+fn portal_unregister(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    return portal::unregister_shortcut(app, binding);
+    #[cfg(not(target_os = "linux"))]
+    return tauri_impl::unregister_shortcut(app, binding);
 }
 
 /// Parse a keyboard implementation string into the enum
@@ -456,6 +496,7 @@ fn parse_keyboard_implementation(s: &str) -> KeyboardImplementation {
         "tauri" => KeyboardImplementation::Tauri,
         "handy_keys" => KeyboardImplementation::HandyKeys,
         "none" => KeyboardImplementation::None,
+        "portal" => KeyboardImplementation::Portal,
         other => {
             warn!(
                 "Invalid keyboard implementation '{}', defaulting to tauri",
@@ -480,6 +521,7 @@ fn unregister_all_shortcuts(app: &AppHandle, implementation: KeyboardImplementat
             KeyboardImplementation::Tauri => tauri_impl::unregister_shortcut(app, binding),
             KeyboardImplementation::HandyKeys => handy_keys::unregister_shortcut(app, binding),
             KeyboardImplementation::None => Ok(()),
+            KeyboardImplementation::Portal => portal_unregister(app, binding),
         };
 
         if let Err(e) = result {
@@ -539,6 +581,7 @@ fn register_all_shortcuts_for_implementation(
             KeyboardImplementation::Tauri => tauri_impl::register_shortcut(app, binding),
             KeyboardImplementation::HandyKeys => handy_keys::register_shortcut(app, binding),
             KeyboardImplementation::None => Ok(()),
+            KeyboardImplementation::Portal => portal_register(app, binding),
         };
 
         if let Err(e) = result {

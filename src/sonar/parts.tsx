@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { listen } from "@tauri-apps/api/event";
+import { commands, type PortalShortcutsStatus } from "@/bindings";
 import logo from "@/assets/sonar-logo.png";
 import { useSettings } from "@/hooks/useSettings";
 import { useOsType } from "@/hooks/useOsType";
@@ -52,6 +54,56 @@ export const ShortcutKeys: React.FC<{ id: string }> = ({ id }) => {
 };
 
 /** A binding's keycaps with Change (record new keys) and Reset. */
+/** Live state of the desktop portal shortcuts (GNOME/KDE on Wayland). */
+export const usePortalShortcuts = (): PortalShortcutsStatus | null => {
+  const [status, setStatus] = useState<PortalShortcutsStatus | null>(null);
+  useEffect(() => {
+    let alive = true;
+    commands
+      .getPortalShortcutsStatus()
+      .then((s) => alive && setStatus(s))
+      .catch(() => {});
+    const unlisten = listen<PortalShortcutsStatus>(
+      "portal-shortcuts-changed",
+      (e) => alive && setStatus(e.payload),
+    );
+    return () => {
+      alive = false;
+      unlisten.then((f) => f()).catch(() => {});
+    };
+  }, []);
+  return status;
+};
+
+/** Shown when the desktop has not accepted Sonar's shortcuts. */
+export const PortalNotice: React.FC = () => {
+  const { t } = useTranslation();
+  const status = usePortalShortcuts();
+  if (!status?.enabled || status.active || !status.error) return null;
+  return (
+    <section className="sonar-card sonar-portal-notice" role="status">
+      <h2 className="sonar-h2">{t("sonar.portal.title")}</h2>
+      <p className="sonar-muted">{t("sonar.portal.body")}</p>
+      <div className="sonar-portal-actions">
+        <button
+          type="button"
+          className="sonar-btn"
+          onClick={() => commands.setupPortalShortcuts(false)}
+        >
+          {t("sonar.portal.allow")}
+        </button>
+        <button
+          type="button"
+          className="sonar-btn sonar-btn-ghost"
+          onClick={() => commands.setupPortalShortcuts(true)}
+        >
+          {t("sonar.portal.edit")}
+        </button>
+      </div>
+    </section>
+  );
+};
+
 export const ShortcutEditor: React.FC<{ id: string }> = ({ id }) => {
   const { t } = useTranslation();
   const { getSetting, resetBinding, isUpdating } = useSettings();
@@ -60,6 +112,10 @@ export const ShortcutEditor: React.FC<{ id: string }> = ({ id }) => {
   const ref = useRef<HTMLDivElement | null>(null);
   usePressAway(capturing, ref, cancel);
   const binding = getSetting("bindings")?.[id];
+  const portal = usePortalShortcuts();
+  const desktopTrigger = portal?.active
+    ? portal.triggers.find((p) => p.id === id)?.trigger
+    : undefined;
   const isDefault =
     !binding || binding.current_binding === binding.default_binding;
 
@@ -85,7 +141,14 @@ export const ShortcutEditor: React.FC<{ id: string }> = ({ id }) => {
   }
   return (
     <div className="sonar-shortcut">
-      <Keycaps combo={binding?.current_binding ?? ""} />
+      <span className="sonar-shortcut-main">
+        <Keycaps combo={binding?.current_binding ?? ""} />
+        {desktopTrigger && (
+          <span className="sonar-portal-trigger">
+            {t("sonar.portal.desktopKeys", { keys: desktopTrigger })}
+          </span>
+        )}
+      </span>
       <span className="sonar-shortcut-actions">
         <button
           type="button"

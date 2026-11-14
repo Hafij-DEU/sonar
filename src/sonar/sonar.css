@@ -381,6 +381,25 @@
   font-weight: 600;
   color: var(--s-ink);
 }
+.sonar-shortcut-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.sonar-portal-trigger {
+  font-size: 12px;
+  color: var(--s-muted);
+}
+.sonar-portal-notice {
+  border-color: var(--s-cyan);
+}
+.sonar-portal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
 .sonar-shortcut-actions {
   display: inline-flex;
   gap: 2px;

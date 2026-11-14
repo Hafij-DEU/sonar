@@ -772,6 +772,36 @@ static OVERLAY_SESSION_SHOWING: AtomicBool = AtomicBool::new(false);
 /// can't say: a model that doesn't stream gets the compact pill under Live too.
 static OVERLAY_SESSION_LIVE: AtomicBool = AtomicBool::new(false);
 
+/// How long the compositor gets to move keyboard focus back to the user's app
+/// after the overlay hides. GNOME takes about 10 ms; this leaves a margin for
+/// the hide request to reach the main thread.
+#[cfg(target_os = "linux")]
+const FOCUS_RETURN_WAIT: Duration = Duration::from_millis(250);
+
+/// Without layer shell (GNOME on Wayland) the overlay is a normal window, and
+/// the desktop gives it keyboard focus when it shows. Paste keys would then
+/// land in the overlay. Hide it before pasting: the desktop hands focus back
+/// to the window the user was typing in.
+pub fn release_overlay_focus(app_handle: &AppHandle) {
+    #[cfg(target_os = "linux")]
+    {
+        if !utils::is_wayland() || LAYER_SHELL_ACTIVE.load(Ordering::SeqCst) {
+            return;
+        }
+        let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") else {
+            return;
+        };
+        if !overlay_window.is_visible().unwrap_or(false) {
+            return;
+        }
+        debug!("Hiding the overlay so the paste reaches the user's window");
+        let _ = overlay_window.hide();
+        std::thread::sleep(FOCUS_RETURN_WAIT);
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = app_handle;
+}
+
 /// Hides the recording overlay window with fade-out animation
 pub fn hide_recording_overlay(app_handle: &AppHandle) {
     OVERLAY_SESSION_SHOWING.store(false, Ordering::SeqCst);

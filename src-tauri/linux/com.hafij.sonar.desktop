@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Sonar
+Comment=Bangla and English voice typing
+Exec=sonar
+Icon=sonar
+Terminal=false
+NoDisplay=true
+Categories=Utility;

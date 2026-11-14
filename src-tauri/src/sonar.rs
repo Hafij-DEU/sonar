@@ -59,6 +59,29 @@ pub fn offline_model_for(settings: &AppSettings, language: DictationLanguage) ->
     }
 }
 
+/// A message for the user when `language` has no downloaded offline model.
+pub fn missing_offline_model(app: &AppHandle, language: DictationLanguage) -> Option<String> {
+    let settings = get_settings(app);
+    let target = offline_model_for(&settings, language);
+    let downloaded = !target.is_empty()
+        && app
+            .state::<Arc<crate::managers::model::ModelManager>>()
+            .get_model_info(&target)
+            .map(|m| m.is_downloaded)
+            .unwrap_or(false);
+    if downloaded {
+        return None;
+    }
+    Some(match language {
+        DictationLanguage::Bangla => {
+            "The Bangla model is not downloaded. Open Sonar and download it on the Home screen, or switch to cloud mode.".to_string()
+        }
+        DictationLanguage::English => {
+            "The English model is not downloaded. Open Sonar and download it on the Home screen, or switch to cloud mode.".to_string()
+        }
+    })
+}
+
 /// Point the transcription engine at the model for `language`. Only the
 /// selection changes here; the model loads in the background on the normal
 /// start path, so recording is not delayed. Returns the updated settings.
