@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import logo from "@/assets/sonar-logo.png";
@@ -6,6 +6,8 @@ import { useSettings } from "@/hooks/useSettings";
 import { useOsType } from "@/hooks/useOsType";
 import { formatKeyCombination } from "@/lib/utils/keyboard";
 import { useModelStore } from "@/stores/modelStore";
+import { useShortcutCapture } from "@/hooks/useShortcutCapture";
+import { usePressAway } from "@/hooks/usePressAway";
 
 export const BANGLA_MODEL = "bangla-whisper-medium-Q8_0";
 export const ENGLISH_MODEL_DEFAULT =
@@ -28,11 +30,9 @@ export const Mark: React.FC<{ size?: number }> = ({ size = 34 }) => (
 );
 
 /** The keys of one binding, drawn as keycaps. */
-export const ShortcutKeys: React.FC<{ id: string }> = ({ id }) => {
-  const { getSetting } = useSettings();
+const Keycaps: React.FC<{ combo: string }> = ({ combo }) => {
   const os = useOsType();
-  const binding = getSetting("bindings")?.[id]?.current_binding ?? "";
-  const keys = formatKeyCombination(binding, os)
+  const keys = formatKeyCombination(combo, os)
     .split("+")
     .map((k) => k.trim())
     .filter(Boolean);
@@ -43,6 +43,69 @@ export const ShortcutKeys: React.FC<{ id: string }> = ({ id }) => {
         <kbd key={`${k}-${i}`}>{k}</kbd>
       ))}
     </span>
+  );
+};
+
+export const ShortcutKeys: React.FC<{ id: string }> = ({ id }) => {
+  const { getSetting } = useSettings();
+  return <Keycaps combo={getSetting("bindings")?.[id]?.current_binding ?? ""} />;
+};
+
+/** A binding's keycaps with Change (record new keys) and Reset. */
+export const ShortcutEditor: React.FC<{ id: string }> = ({ id }) => {
+  const { t } = useTranslation();
+  const { getSetting, resetBinding, isUpdating } = useSettings();
+  const os = useOsType();
+  const { capturing, partial, start, cancel } = useShortcutCapture(id, os);
+  const ref = useRef<HTMLDivElement | null>(null);
+  usePressAway(capturing, ref, cancel);
+  const binding = getSetting("bindings")?.[id];
+  const isDefault =
+    !binding || binding.current_binding === binding.default_binding;
+
+  if (capturing) {
+    return (
+      <div ref={ref} className="sonar-shortcut capturing" aria-live="polite">
+        {partial ? (
+          <Keycaps combo={partial} />
+        ) : (
+          <span className="sonar-capture-hint">
+            {t("sonar.shortcut.pressKeys")}
+          </span>
+        )}
+        <button
+          type="button"
+          className="sonar-btn sonar-btn-ghost"
+          onClick={cancel}
+        >
+          {t("sonar.model.cancel")}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="sonar-shortcut">
+      <Keycaps combo={binding?.current_binding ?? ""} />
+      <span className="sonar-shortcut-actions">
+        <button
+          type="button"
+          className="sonar-btn sonar-btn-ghost"
+          onClick={start}
+        >
+          {t("sonar.shortcut.change")}
+        </button>
+        {!isDefault && (
+          <button
+            type="button"
+            className="sonar-btn sonar-btn-ghost"
+            disabled={isUpdating(`binding_${id}`)}
+            onClick={() => resetBinding(id)}
+          >
+            {t("sonar.shortcut.reset")}
+          </button>
+        )}
+      </span>
+    </div>
   );
 };
 

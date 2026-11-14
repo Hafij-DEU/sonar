@@ -5,8 +5,9 @@
 Hold a shortcut, speak, let go — Sonar types what you said wherever your cursor is: a browser, a chat, a document, a terminal.
 
 - **Two shortcuts, one per language**
-  - Bangla: `Ctrl+Alt+Space`
-  - English: `Ctrl+Alt+Shift+Space`
+  - Bangla: `Super+Alt+Space`
+  - English: `Super+Alt+Shift+Space`
+  - Change either one in Settings, or from the Change button on the Home screen.
 - **Offline mode** — speech is recognised on your own computer. Nothing leaves it.
   - Bangla: a Bangla fine-tuned Whisper Medium model (GGUF, Q8_0, ~793 MB)
   - English: Parakeet TDT 0.6B v2 (GGUF, Q8_0)

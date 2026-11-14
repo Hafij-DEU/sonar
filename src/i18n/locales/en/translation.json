@@ -1105,6 +1105,11 @@
       "next": "Continue",
       "finish": "Start using Sonar"
     },
-    "brand": "Sonar"
+    "brand": "Sonar",
+    "shortcut": {
+      "change": "Change",
+      "reset": "Reset",
+      "pressKeys": "Press the new keys…"
+    }
   }
 }

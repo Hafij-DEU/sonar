@@ -5,7 +5,7 @@ import {
   BANGLA_MODEL,
   KeyField,
   ModeSwitch,
-  ShortcutKeys,
+  ShortcutEditor,
   useCloudKey,
   useEnglishModelId,
   useModelState,
@@ -98,7 +98,7 @@ const Channel: React.FC<{
           <p className="sonar-muted">{t("sonar.home.holdOrTap")}</p>
         </div>
       </div>
-      <ShortcutKeys id={bindingId} />
+      <ShortcutEditor id={bindingId} />
       <div className="sonar-channel-foot">{engine}</div>
     </section>
   );

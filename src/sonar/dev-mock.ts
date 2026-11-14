@@ -14,8 +14,8 @@ const binding = (id: string, name: string, keys: string) => ({
 const settings: any = {
   onboarding_completed: q.get("setup") !== "1",
   bindings: {
-    transcribe: binding("transcribe", "Transcribe Bangla", "ctrl+alt+space"),
-    transcribe_english: binding("transcribe_english", "Transcribe English", "ctrl+alt+shift+space"),
+    transcribe: binding("transcribe", "Transcribe Bangla", "super+alt+space"),
+    transcribe_english: binding("transcribe_english", "Transcribe English", "super+alt+shift+space"),
     cancel: binding("cancel", "Cancel", "escape"),
   },
   cloud_transcription_enabled: q.get("cloud") === "1",

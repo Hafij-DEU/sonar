@@ -596,7 +596,7 @@ fn default_model() -> String {
     "".to_string()
 }
 
-const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 2;
+const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 3;
 
 fn default_settings_schema_version() -> u32 {
     CURRENT_SETTINGS_SCHEMA_VERSION
@@ -990,13 +990,38 @@ fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
 
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
 
+/// Sonar 0.11.1 moved the Linux dictation defaults from Ctrl+Alt to Super+Alt.
+/// Bindings still on the old default follow; ones the user changed are kept.
+fn migrate_dictation_shortcuts_to_super(settings: &mut AppSettings) {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let defaults = get_default_settings();
+    for (id, old_default) in [
+        ("transcribe", "ctrl+alt+space"),
+        ("transcribe_english", "ctrl+alt+shift+space"),
+    ] {
+        let Some(new_default) = defaults.bindings.get(id).map(|b| b.default_binding.clone())
+        else {
+            continue;
+        };
+        if let Some(binding) = settings.bindings.get_mut(id) {
+            binding.default_binding = new_default.clone();
+            if binding.current_binding == old_default {
+                binding.current_binding = new_default;
+            }
+        }
+    }
+}
+
 pub fn get_default_settings() -> AppSettings {
     #[cfg(target_os = "windows")]
     let default_shortcut = "ctrl+space";
     #[cfg(target_os = "macos")]
     let default_shortcut = "option+space";
+    // Sonar: Super keeps Ctrl+Alt free for apps and the terminal.
     #[cfg(target_os = "linux")]
-    let default_shortcut = "ctrl+alt+space";
+    let default_shortcut = "super+alt+space";
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let default_shortcut = "alt+space";
 
@@ -1017,7 +1042,7 @@ pub fn get_default_settings() -> AppSettings {
     #[cfg(target_os = "macos")]
     let default_english_shortcut = "option+shift+space";
     #[cfg(target_os = "linux")]
-    let default_english_shortcut = "ctrl+alt+shift+space";
+    let default_english_shortcut = "super+alt+shift+space";
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let default_english_shortcut = "alt+shift+space";
 
@@ -1361,6 +1386,11 @@ fn apply_settings_migrations(
         // transcribe.cpp 0.2 replaced integer registry indices with opaque
         // process-local handles. Clear every old index once.
         settings.transcribe_gpu_device = default_transcribe_gpu_device();
+        settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
+        updated = true;
+    }
+    if stored_schema_version < 3 {
+        migrate_dictation_shortcuts_to_super(settings);
         settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
         updated = true;
     }
@@ -1762,14 +1792,32 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn default_shortcuts_do_not_conflict_with_ibus_input_method_switch() {
+        // GNOME switches input sources on Super+Space; Super+Alt is free.
         let defaults = get_default_settings();
         assert_eq!(
             defaults.bindings["transcribe"].current_binding,
-            "ctrl+alt+space"
+            "super+alt+space"
         );
         assert_eq!(
-            defaults.bindings["transcribe_with_post_process"].current_binding,
-            "ctrl+alt+shift+space",
+            defaults.bindings["transcribe_english"].current_binding,
+            "super+alt+shift+space",
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn old_ctrl_dictation_shortcuts_move_to_super_but_custom_ones_stay() {
+        let mut settings = get_default_settings();
+        settings.bindings.get_mut("transcribe").unwrap().current_binding =
+            "ctrl+alt+space".to_string();
+        settings.bindings.get_mut("transcribe_english").unwrap().current_binding =
+            "ctrl+f9".to_string();
+        migrate_dictation_shortcuts_to_super(&mut settings);
+        assert_eq!(settings.bindings["transcribe"].current_binding, "super+alt+space");
+        assert_eq!(settings.bindings["transcribe_english"].current_binding, "ctrl+f9");
+        assert_eq!(
+            settings.bindings["transcribe_english"].default_binding,
+            "super+alt+shift+space"
         );
     }
 
